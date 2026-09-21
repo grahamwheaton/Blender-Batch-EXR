@@ -106,13 +106,14 @@ def write_psd(f, width, height, layers, composite, version=1, profile=None,
             for layer in layers:
                 check_cancel()
                 h, w = layer.shape
-                f.write(pack('4iH', layer.top, layer.left, layer.top + h, layer.left + w, 4))
+                ids = (-1, 0, 1, 2, 3) if layer.extra_alpha else (-1, 0, 1, 2)
+                f.write(pack('4iH', layer.top, layer.left, layer.top + h, layer.left + w, len(ids)))
                 positions = []
-                for channel in (0, 1, 2, -1):
+                for channel in ids:
                     f.write(pack('h', channel))
                     positions.append(f.tell())
                     f.write(pack(size_fmt, 0))
-                patches.append(positions)
+                patches.append(list(zip(ids, positions)))
                 f.write(b'8BIMnorm' + bytes((255, 0, 0 if layer.visible else 2, 0)))
                 with section(f):
                     f.write(b'\0' * 8)
@@ -125,12 +126,12 @@ def write_psd(f, width, height, layers, composite, version=1, profile=None,
                     f.write(b'\0' * (-len(value) % 2))
             for layer, positions in zip(layers, patches):
                 progress('Writing ' + layer.name)
-                for channel, position in enumerate(positions):
+                for channel, position in positions:
                     check_cancel()
                     start = f.tell()
                     f.write(pack('H', 3))
                     compressor = zlib.compressobj(level=1)
-                    plane = layer.plane(channel)
+                    plane = layer.plane(3 if channel == -1 else channel)
                     for row in range(0, plane.shape[0], 64):
                         check_cancel()
                         f.write(compressor.compress(predict_float_rows(plane[row:row + 64])))

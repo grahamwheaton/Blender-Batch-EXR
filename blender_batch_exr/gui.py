@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from .converter import Cancelled, convert
+from . import __version__
 
 
 class App:
@@ -14,7 +15,7 @@ class App:
         self.events = queue.Queue()
         self.cancel = threading.Event()
         self.busy = False
-        root.title('Blender Batch EXR')
+        root.title('Blender Batch EXR ' + __version__)
         root.geometry('840x620')
         root.minsize(700, 520)
         root.configure(bg='#202226')

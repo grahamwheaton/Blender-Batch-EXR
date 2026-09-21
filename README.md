@@ -15,15 +15,16 @@ The originals are never modified. Existing output files are skipped. Conversion 
 
 ## What is preserved
 
-- RGB render passes become separate named layers; scalar passes become grayscale RGB layers. XYZ vector passes are grouped as RGB data.
+- RGB render passes become separate named layers with `.RGB`/`.RGBA` suffixes. Scalar passes become grayscale RGB layers. XYZ vector passes are grouped as RGB data.
 - RGB pixels remain 32-bit floating point, including HDR values above 1 and negative values. No tone mapping or 8-bit conversion is applied.
-- Pass alpha becomes layer transparency. **Unpremultiply RGB** defaults on for Blender's premultiplied colour passes. Disable it when your source contains straight RGB. Colours at zero alpha become zero when unpremultiplying.
-- Cryptomatte object/material/asset streams with embedded or local sidecar manifests become named grayscale mask layers. Coverage from all ranks is summed, preserving fractional edges. Only IDs present with positive coverage generate masks.
-- Raw Cryptomatte RGB channels and the fourth coverage channel are retained as hidden data layers. Their ID values are not unpremultiplied or used as transparency.
-- The Combined pass, or Image pass when available, is the only visible layer. Other passes/masks start hidden. The app does not attempt to rebuild your compositor's blend operations.
+- Pass alpha becomes layer transparency. **Unpremultiply RGB** defaults on for Blender's premultiplied colour passes. Disable it when your source contains straight RGB. Like the supplied EXR-IO reference, the divisor has a minimum of 1/32768 to prevent extreme amplification near zero alpha.
+- Cryptomatte streams with embedded or local sidecar manifests become named white silhouettes with coverage in layer transparency. Coverage from all ranks is summed, preserving fractional edges. Only IDs present with positive coverage generate masks. Names use `CryptoObject.Object name` / `CryptoMaterial.Material name`.
+- With masks enabled, raw Cryptomatte channels are replaced by decoded mask layers. Disabling masks retains the raw data layers.
+- All layers start visible, matching the supplied EXR-IO import. Passes appear in ascending name order from top to bottom; masks are below the passes, ordered by floating-point IDs within each stream. The compatibility preview reflects the visible stack. This does not reconstruct your compositor's blend operations.
+- Transparent margins are cropped to layer bounds, and empty passes remain as empty layers. RGBA passes and masks retain the additional alpha channel seen in the EXR-IO reference.
 - Unicode layer names, EXR display/data windows, and ordinary flat multipart EXRs are supported. Parts must share a display window and colour primaries.
 
-Select a mask layer, copy its grayscale contents, and paste into a Photoshop layer mask as needed. The generated masks are independent pixel layers, not masks automatically attached to the beauty layer.
+Ctrl-click a mask layer's thumbnail in Photoshop to load its coverage as a selection, then add a layer mask to the desired render layer. The generated masks are independent pixel layers, not masks automatically attached to the beauty layer.
 
 ## PSD versus PSB
 
@@ -41,15 +42,15 @@ Deep EXRs, subsampled channels, uint32 image channels and extra mipmap/ripmap le
 
 ## Memory and performance
 
-Files are processed sequentially. OpenEXR decompresses an entire file into RAM, so a highly compressed, many-pass EXR can need many gigabytes. Layer data is compressed directly into a temporary file; the app does not hold an additional full PSD in memory. Mask planes are generated on demand. Allow enough free disk space for the Photoshop output, which can be substantially larger than the EXR.
+Files are processed sequentially. OpenEXR decompresses an entire file into RAM, so a highly compressed, many-pass EXR can need many gigabytes. Layer data is compressed directly into a temporary file; the app does not hold an additional full PSD in memory. Decoded masks are cropped in memory. Allow enough free disk space for the Photoshop output, which can be substantially larger than the EXR.
 
 This moves EXR decoding and mask extraction outside Photoshop. Photoshop still needs time and memory to load the resulting layered document; no fixed speed improvement is promised.
 
 ## Validation
 
-Automated round-trip tests independently read the output using `psd-tools`, checking HDR/negative values, transparency, Cryptomatte coverage, Unicode names, cropped windows, both formats, cancellation, existing-file protection, and automatic PSB fallback. A supplied 6000 × 6000 Blender file with 88 channels was converted to a roughly 1.03 GB PSD with 45 layers including seven named Cryptomatte masks (six object masks and one material mask). Every Image RGBA pixel was checked against the source after unpremultiplication, and every pixel of one object mask was independently decoded and compared. The sample artwork is not distributed.
+Automated round-trip tests independently read the output using `psd-tools`, checking HDR/negative values, transparency, Cryptomatte coverage, Unicode names, cropped/empty layers, both formats, cancellation, existing-file protection, and automatic PSB fallback. Version 0.2 was compared against a supplied EXR-IO PSD made from a 6000 × 6000 / 88-channel Blender EXR. All 13 layers matched names, order, visibility, blend modes, opacity and bounds. Every pixel in every stored layer channel matched exactly, including six object masks, one material mask and all render passes. The output is approximately 928 MB; compression and document metadata differ from EXR-IO's PSD. The sample artwork is not distributed.
 
-The portable build has a smoke test covering its bundled OpenEXR reader, PSD writer and Tk interface. Photoshop 2026 (27.10) successfully opened the full-size sample with all 45 layers, 32-bit depth and the embedded linear profile. Small PSD and PSB fixtures were opened and saved in Photoshop, then read back to check HDR values, negative values, alpha and mask coverage. Visual equivalence to every EXR-IO option is not claimed.
+The portable build has a smoke test covering its bundled OpenEXR reader, PSD writer and Tk interface. Photoshop 2026 (27.10) successfully opened the matched 13-layer sample. Small PSD/PSB fixtures are also used for host checks. Matching every EXR-IO import option is not claimed; the default layer layout matches the supplied reference.
 
 ## Run from source / command line
 

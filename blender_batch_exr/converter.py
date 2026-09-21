@@ -32,6 +32,7 @@ class Layer:
     shape: tuple
     visible: bool = False
     unpremultiply: bool = False
+    extra_alpha: bool = False
 
     def plane(self, index):
         if index == 3:
@@ -39,14 +40,35 @@ class Layer:
         value = self.rgb[index]
         result = np.asarray(value() if callable(value) else value, np.float32)
         if self.unpremultiply and self.alpha is not None:
-            result = np.divide(result, self.alpha, out=np.zeros_like(result), where=self.alpha != 0)
+            # EXR-IO limits amplification around zero-alpha antialiased edges.
+            result = result / np.maximum(self.alpha, np.float32(1 / 32768))
         return result
+
+
+def crop_layer(layer):
+    """Trim transparent margins like EXR-IO/Photoshop, keeping empty layers."""
+    if layer.alpha is None:
+        return layer
+    occupied = layer.alpha != 0
+    ys = np.flatnonzero(np.any(occupied, axis=1))
+    xs = np.flatnonzero(np.any(occupied, axis=0))
+    if not len(ys) or not len(xs):
+        layer.top = layer.left = 0
+        bounds = np.s_[:0, :0]
+    else:
+        bounds = np.s_[ys[0]:ys[-1]+1, xs[0]:xs[-1]+1]
+        layer.top += int(ys[0])
+        layer.left += int(xs[0])
+    layer.rgb = tuple(v[bounds] for v in layer.rgb)
+    layer.alpha = layer.alpha[bounds]
+    layer.shape = layer.alpha.shape
+    return layer
 
 
 def crypto_layers(part, source, top, left, shape, log, check):
     header = part.header
     result = []
-    for key in header:
+    for key in sorted(header, key=lambda k: str(header[k]) if k.endswith('/name') else k):
         if not key.startswith('cryptomatte/') or not key.endswith('/name'):
             continue
         check()
@@ -81,7 +103,13 @@ def crypto_layers(part, source, top, left, shape, log, check):
         for ids, coverage in pairs:
             check()
             present.update(int(v) for v in np.unique(ids[coverage > 0]))
-        for name, hex_id in sorted(manifest.items()):
+        def float_id(item):
+            bits = int(item[1], 16)
+            if (bits >> 23) & 255 in (0, 255):
+                bits ^= 1 << 23
+            return np.array(bits, np.uint32).view(np.float32).item()
+
+        for name, hex_id in sorted(manifest.items(), key=float_id):
             check()
             hash_id = int(hex_id, 16)
             exponent = (hash_id >> 23) & 255
@@ -90,14 +118,21 @@ def crypto_layers(part, source, top, left, shape, log, check):
             if hash_id not in present:
                 continue
 
-            def mask(target=hash_id, pairs=pairs):
-                value = np.zeros(shape, np.float32)
-                for ids, coverage in pairs:
-                    check()
-                    np.add(value, np.where(ids == target, coverage, 0), out=value)
-                return np.clip(value, 0, 1)
-
-            result.append(Layer(stream + ' / ' + name, (mask,) * 3, None, top, left, shape))
+            value = np.zeros(shape, np.float32)
+            for ids, coverage in pairs:
+                check()
+                np.add(value, np.where(ids == hash_id, coverage, 0), out=value)
+            np.clip(value, 0, 1, out=value)
+            # EXR-IO masks are white silhouettes with coverage in transparency,
+            # not opaque black/white images.
+            white = (value > 0).astype(np.float32)
+            layer = crop_layer(Layer(stream + '.' + name, (white,) * 3, value,
+                                     top, left, shape, visible=True, extra_alpha=True))
+            # Own the cropped mask arrays so the full-frame backing can be freed.
+            layer.alpha = layer.alpha.copy()
+            white = layer.rgb[0].copy()
+            layer.rgb = (white,) * 3
+            result.append(layer)
         log(f'{stream}: {len(result) - initial_count} mask layers')
     return result
 
@@ -106,6 +141,7 @@ def collect_layers(exr, source, masks, unpremultiply, log, check):
     display = exr.parts[0].header['displayWindow']
     width, height = (int(v) for v in (display[1] - display[0] + 1))
     layers = []
+    mask_layers = []
     for index, part in enumerate(exr.parts):
         check()
         if part.header['type'] in (OpenEXR.deepscanline, OpenEXR.deeptile):
@@ -126,6 +162,9 @@ def collect_layers(exr, source, masks, unpremultiply, log, check):
             group, _, component = name.rpartition('.')
             groups.setdefault(group, {})[component] = channel.pixels
         for group, channels in sorted(groups.items()):
+            raw_crypto = any(re.fullmatch(re.escape(stream) + r'\d+', group) for stream in crypto_streams)
+            if masks and raw_crypto:
+                continue
             shape = next(iter(channels.values())).shape
             name = group or part.header.get('name') or 'Image'
             if len(exr.parts) > 1:
@@ -135,31 +174,54 @@ def collect_layers(exr, source, masks, unpremultiply, log, check):
                 if all(c in channels for c in components):
                     alpha_key = 'a' if components[0].islower() else 'A'
                     alpha = channels.get(alpha_key) if components[0].upper() == 'R' else None
-                    raw_crypto = any(re.fullmatch(re.escape(stream) + r'\d+', group) for stream in crypto_streams)
                     # Cryptomatte A is coverage for the B ID, never transparency.
                     if raw_crypto:
                         alpha = None
-                    layers.append(Layer(name, tuple(channels[c] for c in components), alpha,
-                                        top, left, shape, unpremultiply=unpremultiply and not raw_crypto and components[0].upper() == 'R'))
+                    suffix = ''.join(components) + (alpha_key if alpha is not None else '')
+                    layers.append(crop_layer(Layer(name + '.' + suffix, tuple(channels[c] for c in components), alpha,
+                                        top, left, shape, visible=True, extra_alpha=alpha is not None,
+                                        unpremultiply=unpremultiply and not raw_crypto and components[0].upper() == 'R')))
                     used.update(components)
                     if alpha is not None:
                         used.add(alpha_key)
                     break
             for component, pixels in sorted(channels.items()):
                 if component not in used:
-                    layers.append(Layer(name + '.' + component, (pixels,) * 3, None, top, left, shape))
+                    layers.append(Layer(name + '.' + component, (pixels,) * 3, None, top, left, shape, visible=True))
         if masks:
-            layers.extend(crypto_layers(part, source, top, left, shape, log, check))
+            mask_layers.extend(crypto_layers(part, source, top, left, shape, log, check))
+    layers = mask_layers + sorted(layers, key=lambda layer: layer.name, reverse=True)
     if not layers:
         raise ValueError('EXR contains no supported image channels.')
-    combined = next((x for x in layers if x.name.rsplit('.', 1)[-1].lower() == 'combined'), None)
-    if combined is None:
-        combined = next((x for x in layers if x.name == 'Image'), layers[0])
-        log('No Combined pass found; using ' + combined.name + ' as preview.')
-    combined.visible = True
-    layers.remove(combined)
-    layers.append(combined)
+    # All EXR-IO imported layers are visible; composite the actual stack.
+    combined = composite_layers(layers, width, height, check)
     return width, height, layers, combined
+
+
+def composite_layers(layers, width, height, check):
+    top = layers[-1]
+    if top.left == 0 and top.top == 0 and top.shape == (height, width) and (top.alpha is None or np.all(top.alpha == 1)):
+        return top
+    alpha = np.zeros((height, width), np.float32)
+    rgb = tuple(np.zeros_like(alpha) for _ in range(3))
+    for layer in layers:
+        check()
+        if not layer.visible:
+            continue
+        h, w = layer.shape
+        x0, y0 = max(0, layer.left), max(0, layer.top)
+        x1, y1 = min(width, layer.left + w), min(height, layer.top + h)
+        if x1 <= x0 or y1 <= y0:
+            continue
+        src = np.s_[y0-layer.top:y1-layer.top, x0-layer.left:x1-layer.left]
+        dst = np.s_[y0:y1, x0:x1]
+        a = layer.plane(3)[src]
+        for i in range(3):
+            rgb[i][dst] = layer.plane(i)[src] * a + rgb[i][dst] * (1 - a)
+        alpha[dst] = a + alpha[dst] * (1 - a)
+    for v in rgb:
+        np.divide(v, alpha, out=v, where=alpha != 0)
+    return Layer('Composite', rgb, alpha, 0, 0, (height, width))
 
 
 def convert(source, output_dir=None, *, masks=True, unpremultiply=True, format='auto',

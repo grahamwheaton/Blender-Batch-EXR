@@ -41,15 +41,19 @@ def test_roundtrip_layers_hdr_alpha_masks(tmp_path, format):
     assert psd._record.color_mode_data.value.startswith(b'hdrt')
     assert psd.size == (3, 2)
     layers = {layer.name: layer for layer in psd}
-    beauty = layers['ViewLayer.Combined']
+    beauty = layers['ViewLayer.Combined.RGBA']
     assert beauty.visible
-    assert sum(layer.visible for layer in psd) == 1
+    assert all(layer.visible for layer in psd)
+    assert list(layers) == ['CryptoObject.Test object 🎨', 'ViewLayer.Depth.Z', 'ViewLayer.Combined.RGBA']
     np.testing.assert_allclose(beauty.numpy()[..., 0], [[4, 2, 0], [-.2, .3, .4]])
     np.testing.assert_allclose(beauty.numpy()[..., 3], a)
     np.testing.assert_allclose(layers['ViewLayer.Depth.Z'].numpy()[..., 0], 25)
-    np.testing.assert_allclose(layers['CryptoObject / Test object 🎨'].numpy()[..., 0], coverage)
-    np.testing.assert_allclose(psd.numpy()[..., 0][a > 0], beauty.numpy()[..., 0][a > 0], atol=1e-6)
-    np.testing.assert_allclose(psd.numpy()[..., 3], a)
+    mask = layers['CryptoObject.Test object 🎨']
+    np.testing.assert_array_equal(mask.numpy()[..., 0], coverage > 0)
+    np.testing.assert_allclose(mask.numpy()[..., 3], coverage)
+    np.testing.assert_allclose(psd.numpy()[..., 0], [[4, 13.5, 25], [-.2, .3, .4]], atol=1e-6)
+    np.testing.assert_allclose(psd.numpy()[..., 3], 1)
+    assert [int(c.id) for c in beauty._record.channel_info] == [-1, 0, 1, 2, 3]
     assert out.suffix == '.' + format
 
 
@@ -61,7 +65,8 @@ def test_offset_and_no_masks(tmp_path):
     assert psd.size == (5, 4)
     assert not any(' / ' in layer.name for layer in psd)
     assert psd[-1].offset == (1, 1)
-    np.testing.assert_allclose(psd.numpy()[1:3, 1:4, 0][psd.numpy()[1:3, 1:4, 3] > 0], np.array([[4, 1, 0], [-.2, .3, .4]])[psd.numpy()[1:3, 1:4, 3] > 0], atol=1e-6)
+    beauty = next(x for x in psd if x.name == 'ViewLayer.Combined.RGBA')
+    np.testing.assert_allclose(beauty.numpy()[..., 0], [[4, 1, 0], [-.2, .3, .4]], atol=1e-6)
     assert np.count_nonzero(psd.numpy()[0, :, 3]) == 0
 
 
@@ -117,3 +122,19 @@ def test_missing_manifest_fails_without_partial(tmp_path):
     with pytest.raises(ValueError, match='Missing Cryptomatte manifest'):
         convert(source)
     assert not list(tmp_path.glob('*.psd'))
+
+
+def test_exrio_crop_empty_and_small_alpha(tmp_path):
+    source = tmp_path / 'edges.exr'
+    a = np.zeros((4, 5), np.float32)
+    a[1:3, 2:4] = [[1, 1e-8], [1, 1]]
+    rgb = np.full_like(a, .25)
+    channels = {f'Image.{c}': rgb for c in 'RGB'}
+    channels['Image.A'] = a
+    channels.update({f'Empty.{c}': np.zeros_like(a) for c in 'RGBA'})
+    OpenEXR.File({}, channels).write(str(source))
+    p = PSDImage.open(convert(source))
+    layers = {x.name: x for x in p}
+    assert layers['Image.RGBA'].bbox == (2, 1, 4, 3)
+    assert layers['Empty.RGBA'].bbox == (0, 0, 0, 0)
+    assert layers['Image.RGBA'].numpy()[0, 1, 0] == .25 * 32768
