@@ -1,2 +1,4 @@
 OpenEXR==3.4.15
 numpy>=1.26,<3
+psd-tools==1.19.0
+pillow==12.3.0

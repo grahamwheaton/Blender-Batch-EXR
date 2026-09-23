@@ -2,7 +2,7 @@ import argparse
 from pathlib import Path
 import sys
 
-from .converter import convert
+from .workflow import convert
 
 
 def main():
@@ -13,13 +13,15 @@ def main():
         from .gui import run
         run()
         return
-    parser = argparse.ArgumentParser(description='Convert Blender EXRs to layered 32-bit PSD/PSB without Photoshop.')
+    parser = argparse.ArgumentParser(description='Batch EXR to RLAYER4 layered PSD/PSB without Photoshop.')
     parser.add_argument('inputs', nargs='+', type=Path, help='EXR files or folders')
     parser.add_argument('-o', '--output', type=Path)
     parser.add_argument('--format', choices=['auto', 'psd', 'psb'], default='auto')
     parser.add_argument('--no-masks', action='store_true')
     parser.add_argument('--keep-premultiplied', action='store_true')
     parser.add_argument('--recursive', action='store_true')
+    parser.add_argument('--workflow', choices=['rlayer4', 'raw'], default='rlayer4',
+                        help='RLAYER4 8-bit finishing (default), or raw 32-bit HDR')
     args = parser.parse_args()
     paths = []
     for p in args.inputs:
@@ -31,7 +33,8 @@ def main():
     for path in paths:
         try:
             convert(path, args.output, masks=not args.no_masks,
-                    unpremultiply=not args.keep_premultiplied, format=args.format, log=print)
+                    unpremultiply=not args.keep_premultiplied, format=args.format,
+                    workflow=args.workflow, log=print)
         except Exception as error:
             failed = True
             print(f'ERROR {path.name}: {error}', file=sys.stderr)

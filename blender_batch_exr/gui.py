@@ -4,7 +4,8 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
-from .converter import Cancelled, convert
+from .converter import Cancelled
+from .workflow import convert
 from . import __version__
 
 
@@ -29,7 +30,7 @@ class App:
         frame = ttk.Frame(root, padding=20)
         frame.pack(fill='both', expand=True)
         ttk.Label(frame, text='Blender Batch EXR', font=('Segoe UI', 20, 'bold')).pack(anchor='w')
-        ttk.Label(frame, text='Layered Photoshop files • 32-bit HDR • No Photoshop required').pack(anchor='w', pady=(3, 16))
+        ttk.Label(frame, text='EXR to layered PSD • RLAYER4 finishing • No Photoshop required').pack(anchor='w', pady=(3, 16))
         bar = ttk.Frame(frame)
         bar.pack(fill='x')
         self.controls = []
@@ -50,6 +51,10 @@ class App:
         button.pack(side='left', padx=(8, 0))
         self.controls.append(button)
         ttk.Label(frame, text='Leave blank to save beside each EXR. Existing files are never overwritten.', foreground='#afb5bc').pack(anchor='w', pady=(5, 10))
+        self.finish = tk.BooleanVar(value=True)
+        finishing = ttk.Checkbutton(frame, text='Apply RLAYER4 finishing (8-bit sRGB) — disable for raw 32-bit HDR', variable=self.finish)
+        finishing.pack(anchor='w', pady=(0, 8))
+        self.controls.append(finishing)
         options = ttk.Frame(frame)
         options.pack(fill='x')
         self.masks = tk.BooleanVar(value=True)
@@ -119,7 +124,8 @@ class App:
             control.configure(state='disabled')
         self.progress.start(12)
         settings = dict(output_dir=self.output.get().strip() or None, masks=self.masks.get(),
-                        unpremultiply=self.unpremultiply.get(), format=self.format.get())
+                        unpremultiply=self.unpremultiply.get(), format=self.format.get(),
+                        workflow='rlayer4' if self.finish.get() else 'raw')
         threading.Thread(target=self.worker, args=(list(self.paths), settings), daemon=True).start()
 
     def worker(self, paths, settings):

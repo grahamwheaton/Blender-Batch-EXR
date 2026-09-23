@@ -1,3 +1,10 @@
+# 0.3.0 — batch RLAYER4 finishing
+
+- Default GUI and CLI pipeline uses the watcher's Photoshop-free RLAYER4 finishing.
+- Produces 8-bit sRGB COMP/RLAYERS groups, blend settings and editable masks.
+- Raw 32-bit HDR mode remains available via the checkbox or --workflow raw.
+- Private intermediates, cancellation before publication and existing-output protection.
+- Requires Diff/Image passes and standard scene-linear sRGB inputs for finishing.
 ## v0.2.0 — Match EXR-IO layer layout
 
 - Remove raw Cryptomatte data layers when generating decoded masks.

@@ -12,7 +12,8 @@ with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
     z.write(output_dir / 'BlenderBatchEXR.exe', 'BlenderBatchEXR.exe')
     for name in ['README.md', 'LICENSE', 'RELEASE_NOTES.md']:
         z.write(root / name, name)
-    for package in ['OpenEXR', 'numpy', 'pyinstaller']:
+    for package in ['OpenEXR', 'numpy', 'pyinstaller', 'psd-tools', 'pillow',
+                    'attrs', 'typing-extensions']:
         dist = distribution(package)
         for item in dist.files or []:
             if 'license' in str(item).lower() or 'copying' in str(item).lower():

@@ -1,82 +1,56 @@
-# Blender Batch EXR
+# Blender Batch EXR — RLAYER4
 
-Convert Blender OpenEXR files into **layered, 32-bit PSD files** before opening Photoshop. Runs locally on Windows without Photoshop, Blender or EXR-IO installed.
+Batch-convert EXRs into finished, layered **8-bit sRGB PSD/PSB** files using the 3D viewer Photoshop watcher's Photoshop-free RLAYER4 workflow. Photoshop, Blender and EXR-IO are not required. Original EXRs are never modified.
 
-## Download and use
+## Use
 
-Download **BlenderBatchEXR-Windows-x64.zip** from [Releases](https://github.com/grahamwheaton/Blender-Batch-EXR/releases), extract it and run **BlenderBatchEXR.exe**. No Python installation is required for the portable app.
+Run `BlenderBatchEXR.exe`, add EXRs or a folder, select an optional output folder, and click **Convert batch**. Leave **Apply RLAYER4 finishing** enabled. Disable it for the original raw 32-bit HDR output. Files are processed sequentially; errors are logged and the batch continues. Existing outputs are skipped, never overwritten. Finished mode checks both PSD and PSB basenames.
 
-1. Click **Add EXRs** or **Add folder**. Folder selection includes EXRs directly inside that folder.
-2. Choose an output folder, or leave it empty to save beside the originals.
-3. Leave **Cryptomatte masks** enabled for named object/material masks.
-4. Click **Convert batch**. Open the resulting PSDs in Photoshop when finished.
+This branch changes the workflow; existing upstream releases do not contain it. Build this branch or use its accompanying portable archive.
 
-The originals are never modified. Existing output files are skipped. Conversion failures are reported in the log and the batch continues. **Cancel** stops at the next safe processing step; reading an EXR cannot be interrupted midway. Incomplete outputs are removed during normal cancellation/errors.
+## Finished layer setup
 
-## What is preserved
+The converter first creates a private temporary 32-bit document, then applies the watcher's Photoshop-free RLAYER4 implementation. Only the finished document is published. Temporary intermediates are removed after success, failure or normal cancellation.
 
-- RGB render passes become separate named layers with `.RGB`/`.RGBA` suffixes. Scalar passes become grayscale RGB layers. XYZ vector passes are grouped as RGB data.
-- RGB pixels remain 32-bit floating point, including HDR values above 1 and negative values. No tone mapping or 8-bit conversion is applied.
-- Pass alpha becomes layer transparency. **Unpremultiply RGB** defaults on for Blender's premultiplied colour passes. Disable it when your source contains straight RGB. Like the supplied EXR-IO reference, the divisor has a minimum of 1/32768 to prevent extreme amplification near zero alpha.
-- Cryptomatte streams with embedded or local sidecar manifests become named white silhouettes with coverage in layer transparency. Coverage from all ranks is summed, preserving fractional edges. Only IDs present with positive coverage generate masks. Names use `CryptoObject.Object name` / `CryptoMaterial.Material name`.
-- With masks enabled, raw Cryptomatte channels are replaced by decoded mask layers. Disabling masks retains the raw data layers.
-- All layers start visible, matching the supplied EXR-IO import. Passes appear in ascending name order from top to bottom; masks are below the passes, ordered by floating-point IDs within each stream. The compatibility preview reflects the visible stack. This does not reconstruct your compositor's blend operations.
-- Transparent margins are cropped to layer bounds, and empty passes remain as empty layers. RGBA passes and masks retain the additional alpha channel seen in the EXR-IO reference.
-- Unicode layer names, EXR display/data windows, and ordinary flat multipart EXRs are supported. Parts must share a display window and colour primaries.
+- Visible **COMP** group, top to bottom: AO (Multiply 50%), Gloss (Screen 50%, editable white mask), Image (Soft Light 50%), Diff (Normal), hidden GlossDIR.
+- COMP receives a mask from Image transparency, including a black mask for an empty Image pass.
+- Hidden **RLAYERS** preserves utility passes and decoded Cryptomatte layers. DecalMask is hidden.
+- **Diff and Image are required.** Bare names, `.RGB`/`.RGBA` suffixes and view-layer prefixes are accepted. Ambiguous duplicate passes fail; missing optional passes produce warnings.
+- Finishing accepts standard scene-linear sRGB/Rec.709 input only. It converts to 8-bit sRGB and clips HDR values outside 0–1. Other colour primaries fail explicitly; use raw mode to preserve them.
 
-Ctrl-click a mask layer's thumbnail in Photoshop to load its coverage as a selection, then add a layer mask to the desired render layer. The generated masks are independent pixel layers, not masks automatically attached to the beauty layer.
+This implements the specific RLAYER4 setup, not arbitrary Photoshop actions. It never launches Photoshop. Small quantization/dithering differences from the Photoshop action are expected. No AgX, Filmic or additional exposure transform is applied.
 
-## PSD versus PSB
+## Raw HDR option
 
-**Auto** first writes PSD. If the image exceeds PSD's 30,000-pixel dimension limit or the output approaches 2 GB, it uses Photoshop's large-document **PSB** format. Crossing the size limit during writing triggers a restart as PSB, so select PSB explicitly for files you know are large. PSD and PSB both retain layers and HDR data.
+Disable finishing or pass `--workflow raw` to preserve the original layered 32-bit floating-point workflow. HDR/negative values, pass alpha, Unicode names, display/data windows and supported flat multipart EXRs are retained. A linear ICC profile follows EXR chromaticities (sRGB/Rec.709 when absent). All raw layers start visible; this does not reconstruct compositor blend operations.
 
-**PSD** requires a file within those limits; otherwise conversion reports an error. **PSB** always writes a large-document file.
+Cryptomatte masks use embedded or local sidecar manifests and retain fractional coverage as named white silhouette layers. Disable masks to retain raw Cryptomatte channels. RGB unpremultiplication defaults on for Blender colour passes; disable it for straight RGB input. Deep EXRs, subsampled channels, uint32 image channels and extra mipmap/ripmap levels are unsupported. Keep source EXRs as the authoritative HDR files.
 
-## Colour and compatibility
+## Format, memory and cancellation
 
-Output is scene-linear RGB. An embedded linear ICC profile is generated from EXR chromaticities; when absent, sRGB/Rec.709 primaries and D65 are assumed. Blender's **AgX/Filmic view transform, exposure, looks, and compositor setup are not baked in**. Consequently it will not necessarily look like Blender's display-rendered preview. This is an HDR editing document, not a display-ready export.
+Auto writes PSD, falling back to PSB at the intermediate HDR document's dimension/size limits (30,000 pixels or approximately 2 GB). This conservative choice can produce PSB even when the finished 8-bit file would be smaller. Explicit PSD fails when those limits are exceeded; PSB always produces a large document.
 
-The tool uses the [OpenEXR library](https://github.com/AcademySoftwareFoundation/openexr) directly and writes the [Adobe PSD/PSB format](https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/). It does not execute, embed or redistribute [EXR-IO](https://www.exr-io.com/), and is not an exact implementation of all EXR-IO features.
+OpenEXR reads the entire source into memory. Finishing additionally uses an in-memory PSD library and needs more RAM than raw conversion. Large production scenes still require a memory/performance trial. Cancel takes effect between processing operations and before publication; an EXR read, composite or serialization must finish its current operation first. A force-killed process can leave temporary staging folders.
 
-Deep EXRs, subsampled channels, uint32 image channels and extra mipmap/ripmap levels are unsupported. EXR metadata not represented by layers/profile is not copied into the PSD. Keep the original EXRs as the authoritative source.
+## Run from source
 
-## Memory and performance
-
-Files are processed sequentially. OpenEXR decompresses an entire file into RAM, so a highly compressed, many-pass EXR can need many gigabytes. Layer data is compressed directly into a temporary file; the app does not hold an additional full PSD in memory. Decoded masks are cropped in memory. Allow enough free disk space for the Photoshop output, which can be substantially larger than the EXR.
-
-This moves EXR decoding and mask extraction outside Photoshop. Photoshop still needs time and memory to load the resulting layered document; no fixed speed improvement is promised.
-
-## Validation
-
-Automated round-trip tests independently read the output using `psd-tools`, checking HDR/negative values, transparency, Cryptomatte coverage, Unicode names, cropped/empty layers, both formats, cancellation, existing-file protection, and automatic PSB fallback. Version 0.2 was compared against a supplied EXR-IO PSD made from a 6000 × 6000 / 88-channel Blender EXR. All 13 layers matched names, order, visibility, blend modes, opacity and bounds. Every pixel in every stored layer channel matched exactly, including six object masks, one material mask and all render passes. The output is approximately 928 MB; compression and document metadata differ from EXR-IO's PSD. The sample artwork is not distributed.
-
-The portable build has a smoke test covering its bundled OpenEXR reader, PSD writer and Tk interface. Photoshop 2026 (27.10) successfully opened the matched 13-layer sample. Small PSD/PSB fixtures are also used for host checks. Matching every EXR-IO import option is not claimed; the default layer layout matches the supplied reference.
-
-## Run from source / command line
-
-Python 3.10 or newer, 64-bit:
+Use Python 3.10+ (64-bit) with working Tcl/Tk:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m blender_batch_exr
-```
-
-```powershell
 .\.venv\Scripts\python.exe -m blender_batch_exr "D:\Renders" -o "D:\PSDs"
 .\.venv\Scripts\python.exe -m blender_batch_exr "D:\Renders" --recursive --format psb
-.\.venv\Scripts\python.exe -m blender_batch_exr "image.exr" --no-masks --keep-premultiplied
+.\.venv\Scripts\python.exe -m blender_batch_exr "D:\Renders" --workflow raw
 ```
 
-A shared output folder uses source basenames; duplicate basenames are skipped rather than overwritten. The CLI returns a nonzero exit status if a file fails or is skipped because its output exists.
+A shared output folder uses source basenames; duplicates are skipped. CLI exit status is nonzero when any file fails, is skipped, or no EXRs are found. CLI options are also accepted by the executable, although the windowed portable build has no console; use Python for console logs.
 
-## Build and test
+## Build and validation
 
-Run `Build.ps1` in PowerShell. The build installs development dependencies, runs tests, and produces `dist/BlenderBatchEXR.exe`. Use a standard Python distribution with working Tcl/Tk support.
+Run `Build.ps1` to install dependencies, run tests and build `dist/BlenderBatchEXR.exe`. Then run `.\.venv\Scripts\python.exe package_release.py` for the portable ZIP with documentation and licenses.
 
-```powershell
-.\.venv\Scripts\python.exe -m pytest -q
-.\.venv\Scripts\python.exe package_release.py
-```
+Tests independently read outputs using psd-tools and cover raw HDR/alpha/Cryptomatte, PSD/PSB, finished layer groups, masks, colour, pass validation, cancellation, cleanup and existing-output protection. The executable's `--smoke-test <empty-folder>` exercises Tk, EXR decoding and finished PSD generation. Photoshop-free finishing is adapted from the local watcher implementation; it is not an EXR-IO redistribution or general Photoshop action interpreter.
 
-Source code: MIT license. Bundled third-party components retain their respective licenses, included in the release archive.
+Original project: https://github.com/grahamwheaton/Blender-Batch-EXR. MIT license; bundled dependencies retain their own licenses.
