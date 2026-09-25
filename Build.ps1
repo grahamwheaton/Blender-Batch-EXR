@@ -7,3 +7,5 @@ if ($LASTEXITCODE) { throw 'Dependency install failed' }
 if ($LASTEXITCODE) { throw 'Tests failed' }
 & .\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --windowed --name BlenderBatchEXR launcher.py
 if ($LASTEXITCODE) { throw 'Build failed' }
+& .\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean --onefile --console --exclude-module tkinter --name BlenderBatchEXR-CLI cli_launcher.py
+if ($LASTEXITCODE) { throw 'CLI build failed' }

@@ -10,7 +10,8 @@ output_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else root / 'dist'
 archive = output_dir / 'BlenderBatchEXR-Windows-x64.zip'
 with zipfile.ZipFile(archive, 'w', zipfile.ZIP_DEFLATED) as z:
     z.write(output_dir / 'BlenderBatchEXR.exe', 'BlenderBatchEXR.exe')
-    for name in ['README.md', 'LICENSE', 'RELEASE_NOTES.md']:
+    z.write(output_dir / 'BlenderBatchEXR-CLI.exe', 'BlenderBatchEXR-CLI.exe')
+    for name in ['README.md', 'README-HEADLESS.md', 'LICENSE', 'RELEASE_NOTES.md']:
         z.write(root / name, name)
     for package in ['OpenEXR', 'numpy', 'pyinstaller']:
         dist = distribution(package)

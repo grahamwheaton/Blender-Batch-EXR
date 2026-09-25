@@ -27,8 +27,8 @@ def main():
     if len(sys.argv) == 3 and sys.argv[1] == '--smoke-test':
         smoke_test(sys.argv[2])
     else:
-        from blender_batch_exr.gui import run
-        run()
+        from blender_batch_exr.cli import main as dispatch
+        return dispatch()
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

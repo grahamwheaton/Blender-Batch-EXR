@@ -13,6 +13,16 @@ Download **BlenderBatchEXR-Windows-x64.zip** from [Releases](https://github.com/
 
 The originals are never modified. Existing output files are skipped. Conversion failures are reported in the log and the batch continues. **Cancel** stops at the next safe processing step; reading an EXR cannot be interrupted midway. Incomplete outputs are removed during normal cancellation/errors.
 
+## Headless / automation
+
+Use **BlenderBatchEXR-CLI.exe** to convert without opening the GUI:
+
+```powershell
+.\BlenderBatchEXR-CLI.exe "D:\Renders" -o "D:\Converted" --recursive --log "D:\Logs\exr-batch.log" --skip-existing
+```
+
+See **[README-HEADLESS.md](README-HEADLESS.md)** for all options, exit codes, completely hidden execution, batch scripts and Windows Task Scheduler setup. The regular executable also supports `--headless` with file/folder arguments. Both use the same converter and layer layout.
+
 ## What is preserved
 
 - RGB render passes become separate named layers with `.RGB`/`.RGBA` suffixes. Scalar passes become grayscale RGB layers. XYZ vector passes are grouped as RGB data.
@@ -68,11 +78,11 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m blender_batch_exr "image.exr" --no-masks --keep-premultiplied
 ```
 
-A shared output folder uses source basenames; duplicate basenames are skipped rather than overwritten. The CLI returns a nonzero exit status if a file fails or is skipped because its output exists.
+A shared output folder uses source basenames; duplicate basenames are skipped rather than overwritten. The CLI returns a nonzero exit status if a file fails or is skipped because its output exists, unless `--skip-existing` is used for existing outputs.
 
 ## Build and test
 
-Run `Build.ps1` in PowerShell. The build installs development dependencies, runs tests, and produces `dist/BlenderBatchEXR.exe`. Use a standard Python distribution with working Tcl/Tk support.
+Run `Build.ps1` in PowerShell. The build installs development dependencies, runs tests, and produces `dist/BlenderBatchEXR.exe` and `dist/BlenderBatchEXR-CLI.exe`. Use a standard Python distribution with working Tcl/Tk support for the GUI build; the CLI build excludes Tk.
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q

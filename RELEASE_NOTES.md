@@ -1,13 +1,10 @@
-## v0.2.0 — Match EXR-IO layer layout
+# v0.3.0 — Headless batch conversion
 
-- Remove raw Cryptomatte data layers when generating decoded masks.
-- Match `.RGBA` pass names, dot-separated mask names, layer order and visibility.
-- Generate white masks with transparent coverage instead of opaque grayscale layers.
-- Crop transparent margins and retain empty passes.
-- Match EXR-IO's near-zero-alpha unpremultiplication and extra alpha channels.
+- Adds BlenderBatchEXR-CLI.exe for terminal, script and scheduled-task use. It never loads the GUI and excludes Tk.
+- The regular BlenderBatchEXR.exe now also accepts --headless and conversion arguments.
+- Adds UTF-8 log files, quiet mode, batch summaries and explicit exit codes.
+- Adds --skip-existing for repeat runs and --version.
+- Includes README-HEADLESS.md with examples, options, hidden execution and Task Scheduler instructions.
+- Preserves the v0.2.0 EXR-IO-compatible converter and layer layout.
 
-Compared against a supplied EXR-IO reference: **all 13 layers match in names, order, visibility, blend mode, opacity, bounds and every stored layer-channel pixel**. The sample includes six object masks and one material mask.
-
-Extract the ZIP and run **BlenderBatchEXR.exe**. The window title shows **0.2.0**. Use a new output folder when reconverting; existing files are never overwritten.
-
-Windows x64, portable; no Photoshop, Blender, EXR-IO or Python installation required. Output remains 32-bit scene-linear RGB; Blender's AgX/Filmic look is not baked in. See README for limitations.
+Extract the ZIP. Use BlenderBatchEXR.exe for the GUI or BlenderBatchEXR-CLI.exe for headless conversion. No Python, Photoshop, Blender or EXR-IO installation required.
