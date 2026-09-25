@@ -1,6 +1,6 @@
-# Blender Batch EXR — headless usage (v0.3.0)
+# Blender Batch EXR — headless usage (v0.4.0)
 
-Convert EXRs without opening a window, Photoshop or Blender. The output uses the same EXR-IO-compatible layers and Cryptomatte masks as the graphical app.
+Convert EXRs without opening a window, Photoshop or Blender. Both headless and graphical modes use the same workflow. The default is **RLAYER4 finishing: 8-bit sRGB with COMP/RLAYERS groups**. It requires Diff and Image passes. Use **`--workflow raw`** for the original 32-bit HDR, EXR-IO-compatible pass layers and masks.
 
 ## Quick start
 
@@ -36,6 +36,8 @@ Files run sequentially. Progress is printed in the terminal. Errors are reported
 | `--format auto` | Default: PSD, falling back to PSB when required by file size or dimensions. |
 | `--format psd` | Require PSD; report an error if limits are exceeded. |
 | `--format psb` | Always create PSB files. |
+| `--workflow rlayer4` | Default: apply Photoshop-free RLAYER4 finishing to produce an 8-bit sRGB document. Requires Diff and Image passes; clips HDR values to the display range. |
+| `--workflow raw` | Preserve 32-bit HDR and the EXR-IO-compatible pass/mask layout without finishing. Use for beauty-only EXRs or HDR editing. |
 | `--no-masks` | Keep raw Cryptomatte data instead of generating named masks. |
 | `--keep-premultiplied` | Disable RGB unpremultiplication. Default settings match the tested EXR-IO import. |
 | `--log "path"` | Append progress, errors and a batch summary to a UTF-8 file. Parent folders are created. |
@@ -48,6 +50,12 @@ Files run sequentially. Progress is printed in the terminal. Errors are reported
 Pass actual file/folder paths rather than wildcard patterns such as `*.exr`.
 
 ## Multiple files and repeat runs
+
+To produce raw HDR files, including a single beauty-only EXR:
+
+```powershell
+.\BlenderBatchEXR-CLI.exe "D:\Renders\image.exr" --workflow raw -o "D:\HDR"
+```
 
 ```powershell
 .\BlenderBatchEXR-CLI.exe "D:\Renders\Camera 1.exr" "D:\Renders\Camera 2.exr" -o "D:\Converted"

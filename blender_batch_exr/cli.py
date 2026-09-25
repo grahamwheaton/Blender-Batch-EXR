@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 
 from . import __version__
-from .converter import convert
+from .workflow import convert
 
 
 def main(argv=None):
@@ -17,12 +17,14 @@ def main(argv=None):
         from .gui import run
         run()
         return 0
-    parser = argparse.ArgumentParser(description='Convert Blender EXRs to layered 32-bit PSD/PSB without Photoshop.')
+    parser = argparse.ArgumentParser(description='Convert Blender EXRs to layered PSD/PSB without Photoshop.')
     parser.add_argument('inputs', nargs='*', type=Path, help='EXR files or folders')
     parser.add_argument('--headless', action='store_true', help='Never open the graphical interface')
     parser.add_argument('--version', action='version', version='Blender Batch EXR ' + __version__)
     parser.add_argument('-o', '--output', type=Path, help='Output folder; defaults to beside each EXR')
     parser.add_argument('--format', choices=['auto', 'psd', 'psb'], default='auto')
+    parser.add_argument('--workflow', choices=['rlayer4', 'raw'], default='rlayer4',
+                        help='RLAYER4 8-bit finishing (default), or raw 32-bit HDR')
     parser.add_argument('--no-masks', action='store_true')
     parser.add_argument('--keep-premultiplied', action='store_true')
     parser.add_argument('--recursive', action='store_true', help='Search subfolders')
@@ -72,7 +74,8 @@ def main(argv=None):
                 report(f'[{i}/{len(paths)}] {path}')
                 try:
                     convert(path, args.output, masks=not args.no_masks,
-                            unpremultiply=not args.keep_premultiplied, format=args.format, log=report)
+                            unpremultiply=not args.keep_premultiplied, format=args.format,
+                            workflow=args.workflow, log=report)
                     saved += 1
                 except FileExistsError as error:
                     skipped += 1

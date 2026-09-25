@@ -15,7 +15,7 @@ def exr(path):
 
 
 def cli(*args, launcher='cli_launcher.py'):
-    return subprocess.run([sys.executable, str(ROOT / launcher), *map(str, args)],
+    return subprocess.run([sys.executable, str(ROOT / launcher), '--workflow', 'raw', *map(str, args)],
                           cwd=ROOT, capture_output=True, encoding='utf-8', timeout=30)
 
 
@@ -54,6 +54,17 @@ def test_headless_does_not_import_gui(tmp_path):
             'status=main(sys.argv[1:]); '
             'assert "tkinter" not in sys.modules; '
             'assert "blender_batch_exr.gui" not in sys.modules; raise SystemExit(status)')
-    result = subprocess.run([sys.executable, '-c', code, '--headless', str(src)],
+    result = subprocess.run([sys.executable, '-c', code, '--headless', '--workflow', 'raw', str(src)],
                             cwd=ROOT, capture_output=True, timeout=30)
     assert result.returncode == 0, result.stderr
+
+
+def test_headless_default_rlayer4(tmp_path):
+    src = tmp_path / 'render.exr'
+    OpenEXR.File({}, {f'{p}.{c}': np.ones((2, 3), np.float32)
+                     for p in ('Diff', 'Image') for c in 'RGBA'}).write(str(src))
+    result = subprocess.run([sys.executable, str(ROOT / 'cli_launcher.py'), str(src)],
+                            cwd=ROOT, capture_output=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    doc = PSDImage.open(src.with_suffix('.psd'))
+    assert doc.depth == 8 and {x.name for x in doc} == {'COMP', 'RLAYERS'}
